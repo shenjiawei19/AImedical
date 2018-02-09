@@ -10,7 +10,25 @@ from operator import itemgetter
 import os
 
 '''
+<<<<<<< HEAD
 分词demo
+=======
+词性说明:
+a:形容词
+d:副词
+i:成语
+m:数词
+n:名词
+nr:人名
+ns:地名
+nt:机构团体
+nz:其他专有名词
+t:时间
+v:动词
+x:标点符号
+f:方位词
+un:未知
+>>>>>>> 0d1c900770e512cd9233fbebb364a5f1a819f5a8
 '''
 
 class sen(object):
@@ -88,9 +106,3 @@ if __name__ == '__main__':
     sen3 = "胃疼该怎么办"
     sen4 = "前列腺增生该如何治疗"
     a = Mytfidf()
-    for sen in [sen1,sen2,sen3,sen4]:
-        for x, w in a.extract_tags(sen,topK=10, withWeight=True, allowPOS=('msy','mil','mn','mv','ml', 'mvn', 'ma', 'md', 'mc', 'mi',
-                             'mad', 'mb', 'mnz', 'mnt', 'mns', 'mnr','man', 'mzg', 'mt'),withFlag=True):
-            print('%s %s %s' % (x.word,x.flag, w))
-        print()
-    exit()

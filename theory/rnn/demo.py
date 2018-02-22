@@ -6,6 +6,7 @@ import zipfile
 import numpy as np
 import urllib
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 url = "http://mattmahoney.net/dc/"
 
@@ -103,14 +104,15 @@ valid_examples = np.random.choice(valid_window, valid_size, replace=False)
 num_sampled = 64
 graph = tf.Graph()
 with graph.as_default():
-    train_inputs = tf.placeholder(tf.in32, shape=[batch_size])
-    train_labels = tf.placeholder(tf.in32, shape=[batch_size, 1])
+    train_inputs = tf.placeholder(tf.int32, shape=[batch_size])
+    train_labels = tf.placeholder(tf.int32, shape=[batch_size, 1])
     valid_dataset = tf.constant(valid_examples, dtype=tf.int32)
 
     with tf.device('/cpu:0'):
         embeddings = tf.Variable(
             tf.random_uniform([vocabulary_size, embedding_size], -1.0, 1.0)
         )
+    print(embeddings)
     embed = tf.nn.embedding_lookup(embeddings, train_inputs)
 
     nce_weights = tf.Variable(
@@ -119,20 +121,83 @@ with graph.as_default():
 
     nce_biases = tf.Variable(tf.zeros([vocabulary_size]))
 
-loss = tf.reduce_mean(tf.nn.nce_loss(weights=nce_weights,
-                                     biases=nce_biases,
-                                     labels=train_labels,
-                                     inputs=embed,
-                                     num_sampled=num_sampled,
-                                     num_classes=vocabulary_size))
+    loss = tf.reduce_mean(tf.nn.nce_loss(weights=nce_weights,
+                                         biases=nce_biases,
+                                         labels=train_labels,
+                                         inputs=embed,
+                                         num_sampled=num_sampled,
+                                         num_classes=vocabulary_size))
 
-optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
+    optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
 
-norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
-normalized_embeddings = embeddings / norm
-valid_embeddings = tf.nn.embedding_lookup(normalized_embeddings, valid_dataset)
+    norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
+    normalized_embeddings = embeddings / norm
+    valid_embeddings = tf.nn.embedding_lookup(normalized_embeddings, valid_dataset)
 
-similarity = tf.matmul(valid_embeddings, normalized_embeddings, transpose_b=True)
+    similarity = tf.matmul(valid_embeddings, normalized_embeddings, transpose_b=True)
 
 
-init = tf.global_variables_initializer()
+    init = tf.global_variables_initializer()
+
+    num_steps = 10001
+
+with tf.Session(graph=graph) as session:
+    init.run()
+    print("Initialized")
+
+    average_loss = 0
+
+    for step in range(num_steps):
+        batch_inputs, batch_labels = generate_batch(
+            batch_size=batch_size, num_skips=num_skips, skip_windows=skip_window
+        )
+
+        feed_dict = {
+            train_inputs:batch_inputs, train_labels:batch_labels
+        }
+
+        _, loss_val = session.run([optimizer,loss], feed_dict=feed_dict)
+
+        average_loss += loss_val
+
+        # print(step)
+        if step%200 == 0:
+            if step > 0:
+                average_loss/=2000
+            print("Average loss at step",step,":",average_loss)
+
+            average_loss = 0
+
+        if step%100 == 0:
+            sim = similarity.eval()
+            for i in range(valid_size):
+                valid_word = reverse_dictionary[valid_examples[i]]
+                top_k = 8
+                nearest = (-sim[i,:]).argsort()[1:top_k+1]
+                log_str = "Nearest to %s:" % valid_word
+                for k in range(top_k):
+                    close_word = reverse_dictionary[nearest[k]]
+                    log_str = "%s %s," % (log_str, close_word)
+                print(log_str)
+        final_embeddings = normalized_embeddings.eval()
+
+def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
+    assert low_dim_embs.shape[0] >= len(labels), "more labels than embeddings"
+    plt.figure(figsize=(18,18))
+    for i, labels in enumerate(labels):
+        x, y = low_dim_embs[i,:]
+        plt.scatter(x, y)
+        plt.annotate(labels,
+                     xy=(x,y),
+                     xytest=(5,2),
+                     textcoords='offset points',
+                     ha='right',
+                     va='bottom')
+    plt.savefig(filename)
+
+from sklearn.manifold import TSNE
+tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000)
+plot_only = 100
+low_dim_embs = tsne.fit_transform(final_embeddings[:plot_only,:])
+labels = [reverse_dictionary[i] for i in range(plot_only)]
+plot_with_labels(low_dim_embs, labels)
